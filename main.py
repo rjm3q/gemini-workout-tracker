@@ -1,152 +1,230 @@
 import os
+import psycopg2
 import requests
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
 # ==========================================
-# 1. Setup and Authentication
+# 1. Configuration & Auth
 # ==========================================
 load_dotenv()
+DB_URL = os.environ.get("DATABASE_URL")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Wger API Base URL
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 WGER_BASE = "https://wger.de/api/v2/"
 
 # ==========================================
-# 2. Helper Function: Handle API Pagination
+# 2. Schema Creation (Direct Postgres)
+# ==========================================
+def build_database_schema():
+    print("--- Building Supabase Schema ---")
+    
+    # The consolidated SQL schema
+    schema_sql = """
+    -- Enable UUID generation
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+    -- 1. Core Dictionaries
+    CREATE TABLE IF NOT EXISTS languages (
+        id SERIAL PRIMARY KEY,
+        short_name VARCHAR(10) UNIQUE,
+        full_name TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS muscles (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        is_front BOOLEAN,
+        image_url_main TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS equipment (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS exercise_categories (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS exercises (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        category_id INT REFERENCES exercise_categories(id),
+        equipment_id INT REFERENCES equipment(id),
+        name TEXT NOT NULL,
+        description TEXT,
+        tracks_weight BOOLEAN DEFAULT TRUE,
+        tracks_distance BOOLEAN DEFAULT FALSE,
+        tracks_time BOOLEAN DEFAULT FALSE
+    );
+
+    CREATE TABLE IF NOT EXISTS exercise_muscles (
+        exercise_id UUID REFERENCES exercises(id) ON DELETE CASCADE,
+        muscle_id INT REFERENCES muscles(id) ON DELETE CASCADE,
+        recruitment_level TEXT,
+        PRIMARY KEY (exercise_id, muscle_id)
+    );
+
+    -- 2. Workout Programming (The Planner)
+    CREATE TABLE IF NOT EXISTS routines (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID, -- References auth.users later
+        name TEXT NOT NULL,
+        weeks INT DEFAULT 4,
+        is_public_template BOOLEAN DEFAULT FALSE
+    );
+
+    CREATE TABLE IF NOT EXISTS days (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        routine_id UUID REFERENCES routines(id) ON DELETE CASCADE,
+        day_of_week INT,
+        description TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS slots (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        day_id UUID REFERENCES days(id) ON DELETE CASCADE,
+        exercise_id UUID REFERENCES exercises(id),
+        sort_order INT NOT NULL
+    );
+
+    -- This replaces the 10+ Wger config tables
+    CREATE TABLE IF NOT EXISTS slot_entries (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        slot_id UUID REFERENCES slots(id) ON DELETE CASCADE,
+        set_number INT NOT NULL,
+        reps INT,
+        weight NUMERIC,
+        rir INT,
+        rest_seconds INT
+    );
+    """
+
+    try:
+        # Connect directly to Postgres
+        conn = psycopg2.connect(DB_URL)
+        cursor = conn.cursor()
+        
+        # Execute the schema DDL
+        cursor.execute(schema_sql)
+        conn.commit()
+        
+        cursor.close()
+        conn.close()
+        print("✅ Schema built successfully!")
+    except Exception as e:
+        print(f"❌ Failed to build schema: {e}")
+        raise e
+
+# ==========================================
+# 3. Fetching Helper
 # ==========================================
 def fetch_all_wger_data(endpoint, params=None):
-    """Fetches all pages of data from a given Wger API endpoint."""
     url = f"{WGER_BASE}{endpoint}/"
     results = []
-    
     while url:
         print(f"Fetching: {url}")
         response = requests.get(url, params=params).json()
         results.extend(response.get('results', []))
-        url = response.get('next') # Wger provides a 'next' URL if there are more pages
-        params = None # Only pass params on the first request; 'next' URL includes them
-        
+        url = response.get('next')
+        params = None
     return results
 
 # ==========================================
-# 3. Fetch and Seed Lookup Tables
+# 4. Data Seeding (Supabase REST API)
 # ==========================================
-def seed_lookups():
-    print("--- Fetching Lookup Data from Wger ---")
+def seed_database():
+    print("\n--- Seeding Core Data from Wger ---")
     
-    # Fetch Data
-    wger_categories = fetch_all_wger_data("exercisecategory")
-    wger_equipment = fetch_all_wger_data("equipment")
-    wger_muscles = fetch_all_wger_data("muscle")
-    
-    # We will map Wger's native IDs to Supabase UUIDs
-    wger_to_supa_category = {}
-    wger_to_supa_equipment = {}
-    wger_to_supa_muscle = {}
-    
-    # Insert Categories
-    print("Inserting Categories...")
-    for cat in wger_categories:
-        res = supabase.table('exercise_categories').insert({"name": cat['name']}).execute()
-        wger_to_supa_category[cat['id']] = res.data[0]['id']
-        
-    # Insert Equipment
-    print("Inserting Equipment...")
-    for eq in wger_equipment:
-        res = supabase.table('equipment').insert({"name": eq['name']}).execute()
-        wger_to_supa_equipment[eq['id']] = res.data[0]['id']
+    # Maps for Wger ID -> Supabase DB ID
+    maps = {'cat': {}, 'eq': {}, 'mus': {}}
 
-    # Insert Muscles
-    print("Inserting Muscles...")
-    for mus in wger_muscles:
-        res = supabase.table('muscles').insert({
-            "name": mus['name_en'] if mus.get('name_en') else mus['name'],
-            "general_group": "Unknown" # Wger doesn't easily map this, update manually later if needed
+    # 1. Seed Categories
+    print("Seeding Categories...")
+    for item in fetch_all_wger_data("exercisecategory"):
+        res = supabase.table('exercise_categories').upsert({"id": item['id'], "name": item['name']}).execute()
+        maps['cat'][item['id']] = item['id']
+
+    # 2. Seed Equipment
+    print("Seeding Equipment...")
+    for item in fetch_all_wger_data("equipment"):
+        res = supabase.table('equipment').upsert({"id": item['id'], "name": item['name']}).execute()
+        maps['eq'][item['id']] = item['id']
+
+    # 3. Seed Muscles
+    print("Seeding Muscles...")
+    for item in fetch_all_wger_data("muscle"):
+        res = supabase.table('muscles').upsert({
+            "id": item['id'], 
+            "name": item['name_en'] if item.get('name_en') else item['name'],
+            "is_front": item['is_front'],
+            "image_url_main": item['image_url_main']
         }).execute()
-        wger_to_supa_muscle[mus['id']] = res.data[0]['id']
+        maps['mus'][item['id']] = item['id']
 
-    return wger_to_supa_category, wger_to_supa_equipment, wger_to_supa_muscle
+   # 4. Seed Exercises (English Only)
+    print("Seeding Exercises & Junctions...")
+    exercises = fetch_all_wger_data("exercise", params={"language": 2})
+    
+    for ex in exercises:
+        # 1. DEFENSIVE CHECK: Skip if the exercise has no name
+        ex_name = ex.get('name')
+        if not ex_name:
+            print(f"⚠️ Skipping malformed exercise (Missing Name). ID: {ex.get('id', 'Unknown')}")
+            continue
 
-# ==========================================
-# 4. Fetch and Seed Exercises
-# ==========================================
-def seed_exercises(cat_map, eq_map, muscle_map):
-    print("--- Fetching Exercises from Wger ---")
-    
-    # Fetch only English exercises (language=2 in Wger API)
-    wger_exercises = fetch_all_wger_data("exercise", params={"language": 2})
-    
-    exercises_payload = []
-    exercise_muscle_payload = []
-    
-    print(f"Processing {len(wger_exercises)} exercises...")
-    
-    for ex in wger_exercises:
-        # Determine tracking flags. Wger doesn't explicitly state if it tracks time/distance, 
-        # but we can infer based on the category string (e.g., if category is "Cardio")
-        cat_name = ""
-        for wger_id, supa_id in cat_map.items():
-            if ex['category'] == wger_id:
-                # Need the original Wger category name for logic
-                # For brevity in this script, we'll assume default weightlifting unless noted
-                cat_name = "Cardio" if ex['category'] == 9 else "Weightlifting" 
+        try:
+            # Determine metrics flags based on category
+            category_id = ex.get('category')
+            is_cardio = True if category_id == 'Cardio' else False
+            
+            # Safely get the first equipment ID if it exists
+            equipment_list = ex.get('equipment')
+            equipment_id = equipment_list[0] if equipment_list and len(equipment_list) > 0 else None
 
-        # Build Exercise object for Supabase
-        # Wger allows multiple equipment IDs; we will just grab the first one if it exists
-        equipment_id = ex['equipment'][0] if ex['equipment'] else None
-        
-        supa_exercise = {
-            "name": ex['name'],
-            "category_id": cat_map.get(ex['category']),
-            "equipment_id": eq_map.get(equipment_id) if equipment_id else None,
-            "mechanic": "Compound", # Defaulting, as Wger doesn't provide isolation vs compound
-            "tracks_weight": True if cat_name != "Cardio" else False,
-            "tracks_distance": True if cat_name == "Cardio" else False,
-            "tracks_time": True if cat_name == "Cardio" else False
-        }
-        
-        # Insert Exercise individually so we can get its UUID for the muscle mapping
-        ex_res = supabase.table('exercises').insert(supa_exercise).execute()
-        supa_ex_id = ex_res.data[0]['id']
-        
-        # Map Primary Muscles (Wger array: 'muscles')
-        for m_id in ex.get('muscles', []):
-            if m_id in muscle_map:
-                exercise_muscle_payload.append({
-                    "exercise_id": supa_ex_id,
-                    "muscle_id": muscle_map[m_id],
-                    "recruitment_level": "Primary"
-                })
+            supa_exercise = {
+                "name": ex_name,
+                "description": ex.get('description', ''),
+                "category_id": category_id,
+                "equipment_id": equipment_id,
+                "tracks_weight": not is_cardio,
+                "tracks_distance": is_cardio,
+                "tracks_time": is_cardio
+            }
+            
+            # Insert Exercise
+            ex_res = supabase.table('exercises').insert(supa_exercise).execute()
+            
+            # Make sure we got data back before proceeding
+            if not ex_res.data:
+                print(f"⚠️ Failed to insert {ex_name}, skipping muscles.")
+                continue
                 
-        # Map Secondary Muscles (Wger array: 'muscles_secondary')
-        for m_id in ex.get('muscles_secondary', []):
-            if m_id in muscle_map:
-                exercise_muscle_payload.append({
-                    "exercise_id": supa_ex_id,
-                    "muscle_id": muscle_map[m_id],
-                    "recruitment_level": "Secondary"
-                })
-
-    # Bulk insert all the muscle relationships
-    print(f"Inserting {len(exercise_muscle_payload)} muscle relationships...")
-    
-    # Supabase limits bulk inserts, chunk it if necessary
-    chunk_size = 200
-    for i in range(0, len(exercise_muscle_payload), chunk_size):
-        chunk = exercise_muscle_payload[i:i + chunk_size]
-        supabase.table('exercise_muscles').insert(chunk).execute()
+            supa_ex_id = ex_res.data[0]['id']
+            
+            # Insert Muscle Junctions
+            muscle_payload = []
+            for m_id in ex.get('muscles', []):
+                muscle_payload.append({"exercise_id": supa_ex_id, "muscle_id": m_id, "recruitment_level": "Primary"})
+            for m_id in ex.get('muscles_secondary', []):
+                muscle_payload.append({"exercise_id": supa_ex_id, "muscle_id": m_id, "recruitment_level": "Secondary"})
+                
+            if muscle_payload:
+                supabase.table('exercise_muscles').insert(muscle_payload).execute()
+                
+        except Exception as e:
+            # If ONE exercise causes a database error, catch it and keep going!
+            print(f"❌ Error inserting '{ex_name}': {e}")
+            continue
 
     print("✅ Database Seeded Successfully!")
 
 # ==========================================
-# 5. Execute Pipeline
+# 5. Execution
 # ==========================================
 if __name__ == "__main__":
-    try:
-        cat_map, eq_map, muscle_map = seed_lookups()
-        seed_exercises(cat_map, eq_map, muscle_map)
-    except Exception as e:
-        print(f"Error during seeding: {e}")
+    build_database_schema()
+    seed_database()
