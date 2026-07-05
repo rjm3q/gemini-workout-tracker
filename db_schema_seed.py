@@ -21,87 +21,87 @@ WGER_BASE = "https://wger.de/api/v2/"
 def build_database_schema():
     print("--- Building Supabase Schema ---")
     
-    # # The consolidated SQL schema
-    # schema_sql = """
-    # -- Enable UUID generation
-    # CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    # The consolidated SQL schema
+    schema_sql = """
+    -- Enable UUID generation
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-    # -- 1. Core Dictionaries
-    # CREATE TABLE IF NOT EXISTS languages (
-    #     id SERIAL PRIMARY KEY,
-    #     short_name VARCHAR(10) UNIQUE,
-    #     full_name TEXT
-    # );
+    -- 1. Core Dictionaries
+    CREATE TABLE IF NOT EXISTS languages (
+        id SERIAL PRIMARY KEY,
+        short_name VARCHAR(10) UNIQUE,
+        full_name TEXT
+    );
 
-    # CREATE TABLE IF NOT EXISTS muscles (
-    #     id SERIAL PRIMARY KEY,
-    #     name TEXT NOT NULL,
-    #     is_front BOOLEAN,
-    #     image_url_main TEXT
-    # );
+    CREATE TABLE IF NOT EXISTS muscles (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        is_front BOOLEAN,
+        image_url_main TEXT
+    );
 
-    # CREATE TABLE IF NOT EXISTS equipment (
-    #     id SERIAL PRIMARY KEY,
-    #     name TEXT NOT NULL
-    # );
+    CREATE TABLE IF NOT EXISTS equipment (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL
+    );
 
-    # CREATE TABLE IF NOT EXISTS exercise_categories (
-    #     id SERIAL PRIMARY KEY,
-    #     name TEXT NOT NULL
-    # );
+    CREATE TABLE IF NOT EXISTS exercise_categories (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL
+    );
 
-    # CREATE TABLE IF NOT EXISTS exercises (
-    #     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    #     category_id INT REFERENCES exercise_categories(id),
-    #     equipment_id INT REFERENCES equipment(id),
-    #     name TEXT NOT NULL,
-    #     description TEXT,
-    #     tracks_weight BOOLEAN DEFAULT TRUE,
-    #     tracks_distance BOOLEAN DEFAULT FALSE,
-    #     tracks_time BOOLEAN DEFAULT FALSE
-    # );
+    CREATE TABLE IF NOT EXISTS exercises (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        category_id INT REFERENCES exercise_categories(id),
+        equipment_id INT REFERENCES equipment(id),
+        name TEXT NOT NULL,
+        description TEXT,
+        tracks_weight BOOLEAN DEFAULT TRUE,
+        tracks_distance BOOLEAN DEFAULT FALSE,
+        tracks_time BOOLEAN DEFAULT FALSE
+    );
 
-    # CREATE TABLE IF NOT EXISTS exercise_muscles (
-    #     exercise_id UUID REFERENCES exercises(id) ON DELETE CASCADE,
-    #     muscle_id INT REFERENCES muscles(id) ON DELETE CASCADE,
-    #     recruitment_level TEXT,
-    #     PRIMARY KEY (exercise_id, muscle_id)
-    # );
+    CREATE TABLE IF NOT EXISTS exercise_muscles (
+        exercise_id UUID REFERENCES exercises(id) ON DELETE CASCADE,
+        muscle_id INT REFERENCES muscles(id) ON DELETE CASCADE,
+        recruitment_level TEXT,
+        PRIMARY KEY (exercise_id, muscle_id)
+    );
 
-    # -- 2. Workout Programming (The Planner)
-    # CREATE TABLE IF NOT EXISTS routines (
-    #     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    #     user_id UUID, -- References auth.users later
-    #     name TEXT NOT NULL,
-    #     weeks INT DEFAULT 4,
-    #     is_public_template BOOLEAN DEFAULT FALSE
-    # );
+    -- 2. Workout Programming (The Planner)
+    CREATE TABLE IF NOT EXISTS routines (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID, -- References auth.users later
+        name TEXT NOT NULL,
+        weeks INT DEFAULT 4,
+        is_public_template BOOLEAN DEFAULT FALSE
+    );
 
-    # CREATE TABLE IF NOT EXISTS days (
-    #     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    #     routine_id UUID REFERENCES routines(id) ON DELETE CASCADE,
-    #     day_of_week INT,
-    #     description TEXT
-    # );
+    CREATE TABLE IF NOT EXISTS days (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        routine_id UUID REFERENCES routines(id) ON DELETE CASCADE,
+        day_of_week INT,
+        description TEXT
+    );
 
-    # CREATE TABLE IF NOT EXISTS slots (
-    #     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    #     day_id UUID REFERENCES days(id) ON DELETE CASCADE,
-    #     exercise_id UUID REFERENCES exercises(id),
-    #     sort_order INT NOT NULL
-    # );
+    CREATE TABLE IF NOT EXISTS slots (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        day_id UUID REFERENCES days(id) ON DELETE CASCADE,
+        exercise_id UUID REFERENCES exercises(id),
+        sort_order INT NOT NULL
+    );
 
-    # -- This replaces the 10+ Wger config tables
-    # CREATE TABLE IF NOT EXISTS slot_entries (
-    #     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    #     slot_id UUID REFERENCES slots(id) ON DELETE CASCADE,
-    #     set_number INT NOT NULL,
-    #     reps INT,
-    #     weight NUMERIC,
-    #     rir INT,
-    #     rest_seconds INT
-    # );
-    # """
+    -- This replaces the 10+ Wger config tables
+    CREATE TABLE IF NOT EXISTS slot_entries (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        slot_id UUID REFERENCES slots(id) ON DELETE CASCADE,
+        set_number INT NOT NULL,
+        reps INT,
+        weight NUMERIC,
+        rir INT,
+        rest_seconds INT
+    );
+    """
 
     try:
         # Connect directly to Postgres
