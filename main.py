@@ -1,6 +1,7 @@
 import os
 import math
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware 
 from pydantic import BaseModel
 from supabase import create_client, Client
 from dotenv import load_dotenv
@@ -12,6 +13,21 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 app = FastAPI()
+
+# 2. Define the origins (frontends) you want to allow
+origins = [
+    "http://localhost:5173",  # Default Vite local port
+    "http://127.0.0.1:5173",
+]
+
+# 3. Add the middleware to your FastAPI app
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,            # Allows requests from your Vite app
+    allow_credentials=True,
+    allow_methods=["*"],              # Allows all HTTP methods (POST, GET, etc.)
+    allow_headers=["*"],              # Allows all headers
+)
 
 # --- Data Models (Input from your React frontend) ---
 class LiftStats(BaseModel):

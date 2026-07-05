@@ -1,122 +1,88 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
-import './App.css'
+import { useState } from 'react';
+import { Box, Button, Heading, Text, VStack, Spinner, Code } from '@chakra-ui/react';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [cycleData, setCycleData] = useState<any | null>(null);
+
+  const handleGenerateCycle = async () => {
+    setLoading(true);
+    setError(null);
+    setCycleData(null);
+
+    try {
+      // Replace with your exact FastAPI route and pass any required payloads
+      const response = await fetch('http://localhost:8000/api/generate/wendler', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Example fallback payload; adjust to match your backend Pydantic schema
+        body: JSON.stringify({
+          squat_1rm: 315,
+          bench_1rm: 225,
+          deadlift_1rm: 405,
+          press_1rm: 135,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setCycleData(data);
+    } catch (err: any) {
+      setError(err.message || 'Something went wrong communicating with the API.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+    <Box p={8} maxW="container.md" mx="auto">
+      <VStack gap={6} align="flex-start">
+        <Heading size="2xl">Macrocycle Generator</Heading>
+        <Text fontSize="lg" color="gray.500">
+          Generate structured multi-week training blocks directly into your tracking hierarchy.
+        </Text>
+
+        <Button 
+          colorPalette="blue" 
+          size="lg" 
+          disabled={loading}
+          onClick={handleGenerateCycle}
         >
-          Count is {count}
-        </button>
-      </section>
+          {loading ? <Spinner size="sm" mr={2} /> : null}
+          {loading ? 'Generating...' : 'Generate 5/3/1 Cycle'}
+        </Button>
 
-      <div className="ticks"></div>
+        {/* Error Feedback */}
+        {error && (
+          <Box p={4} bg="red.50" color="red.700" borderRadius="md" w="full">
+            <Text fontWeight="bold">Error Generation Failed:</Text>
+            <Text>{error}</Text>
+          </Box>
+        )}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+        {/* Success / Data Output View */}
+        {cycleData && (
+          <VStack gap={4} align="flex-start" w="full">
+            <Box p={4} bg="green.50" color="green.700" borderRadius="md" w="full">
+              <Text fontWeight="bold">Success!</Text>
+              <Text>Macrocycle created and stored successfully.</Text>
+            </Box>
+            
+            <Text fontWeight="bold" mt={2}>Returned Payload Summary:</Text>
+            <Code p={4} borderRadius="md" w="full" overflowX="auto">
+              {JSON.stringify(cycleData, null, 2)}
+            </Code>
+          </VStack>
+        )}
+      </VStack>
+    </Box>
+  );
 }
 
-export default App
+export default App;
