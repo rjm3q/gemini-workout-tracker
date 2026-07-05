@@ -392,6 +392,61 @@ def seed_default_templates():
         if targets:
             supabase.table('workout_template_targets').insert(targets).execute()
             print(f"✅ Created '{t_data['name']}' with {len(targets)} exercises.")
+
+# ==========================================
+# 7. Data Seeding (Supabase REST API)
+# ==========================================
+def seed_advanced_routines():
+    print("\n--- Seeding Advanced Macrocycle Routines ---")
+    
+    # 1. Define the Programs
+    programs = [
+        # Strength & Periodization
+        {"name": "Starting Strength", "type": "Linear Progression", "desc": "Mark Rippetoe's classic novice linear progression program focusing on the big lifts."},
+        {"name": "Conjugate Method", "type": "Powerlifting", "desc": "Westside Barbell's concurrent training model alternating Max Effort and Dynamic Effort days."},
+        {"name": "Daily Undulating Periodization (DUP)", "type": "Periodization", "desc": "Varying volume and intensity on a daily basis (e.g., Hypertrophy, Power, and Strength days within the same week)."},
+        {"name": "The Juggernaut Method", "type": "Block Periodization", "desc": "Chad Wesley Smith's 16-week cycle focused on sub-maximal work across 10s, 8s, 5s, and 3s phases."},
+        {"name": "Tudor Bompa's Linear Progression", "type": "Periodization", "desc": "Traditional block periodization moving through anatomical adaptation, hypertrophy, and maximum strength phases."},
+        {"name": "Wendler 5/3/1", "type": "Strength", "desc": "Jim Wendler's famous 4-week sub-maximal progression cycle focusing on slow, steady strength gains."},
+        {"name": "Wendler 8/6/4", "type": "Hypertrophy/Strength", "desc": "A higher volume, hypertrophy-focused variation of 5/3/1 utilizing 8, 6, and 4 rep max percentages."},
+        
+        # Kettlebell Programs
+        {"name": "StrongFirst Simple & Sinister", "type": "Kettlebell", "desc": "Pavel Tsatsouline's minimalist daily program: Heavy Swings and Turkish Get-ups."},
+        {"name": "Dan John's 10k Swing Challenge", "type": "Kettlebell", "desc": "500 swings a day, 4 days a week, for 4 weeks. Pure mental and physical grit."},
+        {"name": "Dry Fighting Weight", "type": "Kettlebell", "desc": "Geoff Neupert's 5-week double kettlebell complex focusing on auto-regulation and density."},
+        {"name": "Armor Building Complex", "type": "Kettlebell", "desc": "Dan John's devastating complex: 2 Cleans, 1 Press, 3 Front Squats."},
+        {"name": "The Serious Endurance Plan", "type": "Kettlebell", "desc": "High-volume, long-cycle kettlebell endurance programming."},
+        {"name": "StrongFirst Rite of Passage", "type": "Kettlebell", "desc": "The benchmark kettlebell certification prep focusing on the Clean & Press and Snatch."}
+    ]
+
+    for prog in programs:
+        # 1. Create the Routine (Macrocycle)
+        r_res = supabase.table('routines').insert({
+            "name": prog['name'],
+            "description": prog['desc'],
+            "type": prog['type']
+        }).execute()
+        
+        routine_id = r_res.data[0]['id']
+        
+        # 2. Create a default "Day" for the routine to establish the hierarchy
+        d_res = supabase.table('days').insert({
+            "routine_id": routine_id,
+            "name": "Day 1 / Primary Session"
+        }).execute()
+        
+        day_id = d_res.data[0]['id']
+        
+        # 3. Create a default "Slot" for the day (Fixed with sort_order)
+        supabase.table('slots').insert({
+            "day_id": day_id,
+            "name": "Main Movement",
+            "sort_order": 1
+        }).execute()
+        
+        print(f"✅ Routine '{prog['name']}' initialized successfully.")
+
+    print("\n🎉 All advanced routines have been seeded!")
  
 # ==========================================
 #  Execution
@@ -401,4 +456,5 @@ if __name__ == "__main__":
     # seed_database()
     # seed_weights_and_bars()
     # seed_test_workout()
-    seed_default_templates()
+    # seed_default_templates()
+    seed_advanced_routines()
